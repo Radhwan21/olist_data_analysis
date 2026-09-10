@@ -71,10 +71,14 @@ WITH (
 );
 
 COPY raw.product_category_translation
-FROM 'C:\olist_project\data\raw\olist_product_category_name_dataset.csv'
+FROM 'C:\olist_project\data\raw\product_category_name_translation.csv'
 WITH (
     FORMAT CSV,
     HEADER TRUE,
     DELIMITER ',',
     ENCODING 'UTF8'
 );
+
+SELECT *
+FROM raw.orders
+LIMIT 10;
