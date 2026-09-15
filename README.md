@@ -75,12 +75,12 @@ olist-ecommerce-analytics/
 │   └── raw/
 │
 ├── sql/
-│   ├── 01_create_database.sql
-│   ├── 02_create_raw_tables.sql
-│   ├── 03_load_data.sql
-│   ├── 04_data_quality.sql
-│   ├── 05_transformations.sql
-│   └── 06_analysis.sql
+│   ├── 1_create_raw_tables.sql
+│   ├── 2_load_data.sql
+│   ├── 3_data_quality.sql
+│   ├── 4_data_modeling.sql
+│   ├── 5_last_quality_check.sql
+│   └── 6_analysis.sql
 │
 ├── powerbi/
 │   └── olist_dashboard.pbix
