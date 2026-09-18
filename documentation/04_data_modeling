@@ -1,0 +1,257 @@
+# 4. Data Modeling
+
+After the data-quality checks, I built an analytical model designed specifically for reporting and business analysis.
+
+The main goal was not to reproduce the original Olist database exactly. Instead, I wanted a structure that made analytical queries easier to write, reduced the risk of duplicated results, and worked well with Power BI.
+
+The final model follows a **star-schema approach**, with dimension tables providing descriptive context around several fact tables.
+
+---
+
+## 4.1 Analytical Model
+
+The final analytical model contains four main dimensions:
+
+* `dim_customer`
+* `dim_product`
+* `dim_seller`
+* `dim_date`
+
+and three fact tables:
+
+* `fact_order_item`
+* `fact_payment`
+* `fact_review`
+
+Conceptually, the model looks like this:
+
+```text
+                         dim_customer
+                              │
+                              │
+                              ▼
+dim_product ─────────► fact_order_item ◄───────── dim_seller
+                              │
+                              │
+                              ▼
+                           dim_date
+
+
+                         fact_payment
+                              │
+                              ▼
+                         order-level
+
+
+                         fact_review
+                              │
+                              ▼
+                         order-level
+```
+
+The exact relationships and cardinalities are shown in the model diagram below.
+
+![Analytical data model](images/data_model.png)
+
+---
+
+## 4.2 Dimension Tables
+
+### `dim_customer`
+
+This dimension represents customers from an analytical perspective.
+
+The main customer identifier is `customer_unique_id`, rather than simply using `customer_id`.
+
+This was based on the data-quality investigation described earlier: the same underlying customer can have multiple customer records.
+
+The dimension also contains customer location information such as:
+
+* city
+* state
+* ZIP-code prefix
+
+For customers associated with more than one location, the model keeps the **latest known location based on purchase activity**.
+
+This gives the analytical model one customer record while avoiding the assumption that the location is necessarily a permanent residence.
+
+---
+
+### `dim_product`
+
+`dim_product` contains the descriptive information needed to analyze product performance.
+
+Examples include:
+
+* product category
+* product dimensions
+* product weight
+
+Keeping these attributes in a dimension makes it possible to analyze order-item performance by category without repeatedly joining the raw product table.
+
+---
+
+### `dim_seller`
+
+`dim_seller` represents sellers and their geographic information.
+
+It contains information such as:
+
+* seller ID
+* ZIP-code prefix
+* city
+* state
+
+This dimension is used to connect product sales with seller-level performance and geographic analysis.
+
+---
+
+### `dim_date`
+
+A dedicated date dimension provides a consistent way to analyze the business over time.
+
+It allows the same date logic to be reused for analysis such as:
+
+* revenue over time
+* monthly performance
+* yearly trends
+* delivery-related analysis
+
+Instead of creating separate date-related columns throughout different fact tables, the date dimension provides a central time structure for the model.
+
+---
+
+## 4.3 Fact Tables and Their Grain
+
+The fact tables were designed around different business events.
+
+| Fact table        | Grain                                        | Main purpose                                    |
+| ----------------- | -------------------------------------------- | ----------------------------------------------- |
+| `fact_order_item` | One row per product item within an order     | Revenue, products, sellers and freight analysis |
+| `fact_payment`    | One row per payment sequence within an order | Payment and payment-value analysis              |
+| `fact_review`     | One row per review/order combination         | Customer satisfaction analysis                  |
+
+Keeping these grains separate was important.
+
+For example, an order can contain multiple items and multiple payment records. Joining both tables together without controlling the aggregation level could multiply payment values across item rows.
+
+The model therefore keeps each fact table at its natural analytical grain and combines information only when the level of aggregation is appropriate.
+
+---
+
+## 4.4 Why `fact_order_item` Is the Main Sales Fact
+
+`fact_order_item` is the main fact table for commercial performance.
+
+An order can contain several items, so the table records each purchased product separately.
+
+This allows the analysis to connect:
+
+```text
+Order
+  │
+  ├── Product
+  ├── Seller
+  ├── Price
+  └── Freight
+```
+
+From this table, I can analyze metrics such as revenue and freight costs by product category, seller, customer location and time.
+
+This also avoids treating an order as a single product when it may actually contain several different items.
+
+---
+
+## 4.5 Keeping Payment and Review Data Separate
+
+Payments and reviews were intentionally kept as separate fact tables.
+
+Payment data can contain multiple payment sequences for the same order, while review data has its own identifier and relationship with orders.
+
+Combining these directly with item-level data would create a risk of duplicated values.
+
+For example:
+
+```text
+One order
+   │
+   ├── 3 order items
+   │
+   ├── 2 payment records
+   │
+   └── 1 review
+```
+
+A direct join between all three could produce multiple rows representing the same payment or review.
+
+Instead, the model keeps these business processes separate and controls the aggregation when they are used together in analysis.
+
+---
+
+## 4.6 Important Modeling Decisions
+
+Several decisions made during data quality directly affected the final model.
+
+### Customer identity
+
+`customer_unique_id` was used to represent the analytical customer because one underlying customer can have multiple `customer_id` records.
+
+### Customer location
+
+For customers associated with multiple locations, the model uses the latest known location based on purchase activity.
+
+### Review key
+
+`review_id` was not unique in the raw review table.
+
+The final `fact_review` therefore uses:
+
+```text
+PRIMARY KEY (review_id, order_id)
+```
+
+This preserves the valid review/order combinations instead of deleting records simply because the review identifier was repeated.
+
+### Table grain
+
+Each fact table keeps its own defined grain.
+
+This prevents measures such as revenue, payment values and review information from being unintentionally multiplied through joins.
+
+### Derived information
+
+I avoided creating unnecessary duplicate fields when the same information could already be obtained from an existing date or dimension structure.
+
+The model should contain information because it serves an analytical purpose, not simply because it can be created.
+
+---
+
+## 4.7 Why the Model Matters for Power BI
+
+The analytical model was also designed with the final Power BI dashboard in mind.
+
+A well-defined star schema makes it easier to:
+
+* create reliable relationships
+* filter facts through dimensions
+* build reusable DAX measures
+* analyze the same metric across different business dimensions
+* reduce ambiguity between tables
+
+This was particularly important for the performance-scoring page, where seller states, customer cities and product categories are evaluated using multiple KPIs.
+
+The Power BI model therefore builds on the decisions already made in PostgreSQL rather than trying to solve data-structure problems inside the dashboard.
+
+---
+
+## 4.8 Final Model
+
+The final model separates **descriptive information** from **business events** while keeping the grain of each fact table explicit.
+
+The result is a structure that is easier to query, easier to connect to Power BI, and safer to use for business analysis.
+
+The key principle throughout the modeling process was:
+
+> **The model should make the correct analysis easier and the incorrect analysis harder.**
+
+With the analytical model in place, the next step was to use SQL to answer the business questions and identify the patterns that would later be visualized in Power BI.
